@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Hasil download dataset
+data/hasil_scraping/
+data/_kaggle_download/
