@@ -26,16 +26,10 @@ permissions:
   contents: read
   id-token: write
 
-# ==========================================
 # 3. JOBS
-# ==========================================
-
 jobs:
 
-  # ========================================
   # JOB 1: CONTINUOUS INTEGRATION
-  # ========================================
-
   scraping:
     name: CI - Download TomTom Dataset
 
@@ -93,10 +87,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # ========================================
   # JOB 2: CONTINUOUS DEPLOYMENT
-  # ========================================
-
   deployment:
     name: CD - Deploy Dataset to Azure
 
@@ -166,6 +157,4 @@ jobs:
         if: always()
         run: az logout
 
-# ==========================================
 # END OF WORKFLOW
-# ==========================================
