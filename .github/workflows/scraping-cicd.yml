@@ -1,0 +1,178 @@
+
+name: CI-CD TomTom Traffic Data Scraping
+
+# ==========================================
+# 1. WORKFLOW TRIGGERS
+# ==========================================
+
+on:
+  # Menjalankan workflow ketika ada push
+  push:
+    branches:
+      - main
+      - develop
+
+  # Menjalankan CI ketika ada Pull Request ke main
+  pull_request:
+    branches:
+      - main
+
+  # Menjalankan scraping otomatis setiap hari
+  # Pukul 08.00 WIB (01.00 UTC)
+  schedule:
+    - cron: '0 1 * * *'
+
+  # Menjalankan workflow secara manual
+  workflow_dispatch:
+
+# ==========================================
+# 2. PERMISSIONS
+# ==========================================
+
+permissions:
+  contents: read
+  id-token: write
+
+# ==========================================
+# 3. JOBS
+# ==========================================
+
+jobs:
+
+  # ========================================
+  # JOB 1: CONTINUOUS INTEGRATION
+  # ========================================
+
+  scraping:
+    name: CI - Download TomTom Dataset
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # STEP 1: Mengambil kode dari GitHub
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # STEP 2: Menyiapkan Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      # STEP 3: Menginstal dependency
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # STEP 4: Download dataset dari Kaggle
+      - name: Run Kaggle Web Scraping
+        env:
+          KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+        run: |
+          python scraper.py
+
+      # STEP 5: Memastikan hasil scraping tersedia
+      - name: Verify Scraping Output
+        run: |
+          test -s data/hasil_scraping/manifest.csv
+          test -s data/hasil_scraping/metadata.json
+
+          echo "================================"
+          echo "SCRAPING BERHASIL"
+          echo "================================"
+
+          echo "Daftar file hasil scraping:"
+          find data/hasil_scraping -type f
+
+          echo "Ukuran dataset:"
+          du -sh data/hasil_scraping
+
+      # STEP 6: Menyimpan hasil scraping sebagai artifact
+      - name: Upload Scraping Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tomtom-traffic-dataset
+          path: data/hasil_scraping/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ========================================
+  # JOB 2: CONTINUOUS DEPLOYMENT
+  # ========================================
+
+  deployment:
+    name: CD - Deploy Dataset to Azure
+
+    runs-on: ubuntu-latest
+
+    # CD hanya berjalan setelah CI berhasil
+    needs: scraping
+
+    # Deployment hanya dilakukan dari branch main
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+
+      # STEP 1: Mengambil repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # STEP 2: Mengunduh artifact hasil scraping
+      - name: Download Scraping Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tomtom-traffic-dataset
+          path: data/hasil_scraping/
+
+      # STEP 3: Memeriksa artifact
+      - name: Verify Downloaded Artifact
+        run: |
+          echo "Memeriksa hasil scraping..."
+
+          test -s data/hasil_scraping/manifest.csv
+          test -s data/hasil_scraping/metadata.json
+
+          find data/hasil_scraping -type f
+
+      # STEP 4: Login ke Azure menggunakan OIDC
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # STEP 5: Mengunggah dataset ke Azure Blob Storage
+      - name: Upload Dataset to Azure Blob Storage
+        run: |
+          az storage blob upload-batch \
+            --account-name "${{ vars.AZURE_STORAGE_ACCOUNT }}" \
+            --destination "${{ vars.AZURE_CONTAINER_NAME }}" \
+            --source "data/hasil_scraping" \
+            --auth-mode login \
+            --overwrite true
+
+      # STEP 6: Memverifikasi file di Azure
+      - name: Verify Azure Blob Storage
+        run: |
+          echo "Memeriksa file di Azure Blob Storage..."
+
+          az storage blob list \
+            --account-name "${{ vars.AZURE_STORAGE_ACCOUNT }}" \
+            --container-name "${{ vars.AZURE_CONTAINER_NAME }}" \
+            --auth-mode login \
+            --query "[].name" \
+            --output table
+
+      # STEP 7: Logout Azure
+      - name: Logout from Azure
+        if: always()
+        run: az logout
+
+# ==========================================
+# END OF WORKFLOW
+# ==========================================
