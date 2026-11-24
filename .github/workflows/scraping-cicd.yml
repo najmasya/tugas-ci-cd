@@ -1,29 +1,27 @@
 
 name: CI-CD TomTom Traffic Data Scraping
 
-# ==========================================
 # 1. WORKFLOW TRIGGERS
-# ==========================================
-
 on:
   # Menjalankan workflow ketika ada push
   push:
     branches:
       - main
-      - develop
+      - dev
 
   # Menjalankan CI ketika ada Pull Request ke main
   pull_request:
     branches:
       - main
+  
+  # Schedule setiap 6 jam
+  # schedule:
+  # - cron: '0 */6 * * *'
 
   # Menjalankan workflow secara manual
   workflow_dispatch:
 
-# ==========================================
 # 2. PERMISSIONS
-# ==========================================
-
 permissions:
   contents: read
   id-token: write
